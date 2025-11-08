@@ -1,0 +1,48 @@
+{
+  "output_dir": "~/.bin/data/scripts-data/reports/security/raw",
+  "monitoring": {
+    "check_listening_ports": true,
+    "check_connections": true,
+    "check_suspicious_ports": true,
+    "check_network_services": true,
+    "check_failed_logins": true,
+    "check_successful_logins": true,
+    "check_sudo_usage": true,
+    "check_active_sessions": true,
+    "check_ssh_config": true,
+    "auth_check_hours": 24,
+    "check_firewall": true,
+    "check_selinux": true,
+    "check_security_updates": true,
+    "check_all_updates": true,
+    "check_kernel": true,
+    "check_vulnerable_packages": true,
+    "check_automatic_updates": true,
+    "check_network_interfaces": true,
+    "check_connectivity": true,
+    "check_dns": true,
+    "check_gateway": true,
+    "check_internet": true,
+    "check_bandwidth": true,
+    "check_network_security": true,
+    "connectivity_test_hosts": [
+      "8.8.8.8",
+      "1.1.1.1",
+      "google.com"
+    ],
+    "check_suid_files": true,
+    "check_sgid_files": true,
+    "check_world_writable": true,
+    "check_critical_files": true,
+    "check_home_permissions": true,
+    "check_ssh_keys": true,
+    "check_unowned_files": false
+  },
+  "notes": {
+    "description": "Configuração do Security Monitor",
+    "output_dir": "Diretório para salvar relatórios JSON. Você pode usar ~ para home. Env var: SECURITY_MONITOR_OUTPUT",
+    "auth_check_hours": "Número de horas para buscar logs de autenticação (padrão: 24)",
+    "connectivity_test_hosts": "Lista de hosts para testar conectividade",
+    "check_unowned_files": "Desabilitado por padrão (operação lenta - varre todo o sistema)"
+  }
+}
