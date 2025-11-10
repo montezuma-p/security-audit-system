@@ -503,6 +503,44 @@ body {
     margin-top: 10px;
 }
 
+/* AI Mode Badge */
+.ai-mode {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
+    0%, 100% { box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); }
+    50% { box-shadow: 0 4px 25px rgba(102, 126, 234, 0.6); }
+}
+
+/* Severity Badges */
+.severity-badge.severity-alto,
+.severity-badge.severity-high {
+    background: var(--color-critical);
+    color: white;
+}
+
+.severity-badge.severity-medio,
+.severity-badge.severity-medium {
+    background: var(--color-warning);
+    color: #333;
+}
+
+.severity-badge.severity-baixo,
+.severity-badge.severity-low {
+    background: var(--color-good);
+    color: white;
+}
+
+.severity-badge.severity-urgente {
+    background: #8b0000;
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .header h1 { font-size: 1.8em; }

@@ -16,6 +16,7 @@
 - [Níveis de Sanitização](#-níveis-de-sanitização)
 - [Dados Coletados](#-dados-coletados)
 - [O que é Enviado para a IA](#-o-que-é-enviado-para-a-ia)
+- [🆕 Fallback Automático e Arquivos de Debug](#-fallback-automático-e-arquivos-de-debug)
 - [Exemplos Práticos](#-exemplos-práticos)
 - [Boas Práticas](#-boas-práticas)
 - [FAQ](#-faq)
@@ -555,7 +556,119 @@ Seja didático, use analogias quando apropriado, e priorize clareza.
 
 ---
 
-## 💡 exemplos práticos
+## 🆕 fallback automático e arquivos de debug
+
+### O que acontece quando a IA falha?
+
+**Situação**: Você executou `--full`, mas:
+- A API Gemini está fora do ar
+- Sua internet caiu no meio
+- A resposta da IA foi truncada/malformada
+
+**Antes (versões antigas)**:
+```
+❌ Erro ao parsear JSON da IA
+❌ Programa encerra
+❌ Você perde tudo e precisa executar de novo
+```
+
+**Agora (Nov 2025+)**:
+```
+⚠️ Erro ao parsear JSON da IA
+🔄 FALLBACK AUTOMÁTICO: Gerando relatório local...
+✅ Relatório HTML local gerado com sucesso!
+� Resposta da IA salva em: gemini_response_error_20251110_143022.txt
+```
+
+### Como funciona o fallback?
+
+```
+┌─────────────────────────────────────────────────────┐
+│         Fluxo com Fallback Automático               │
+└─────────────────────────────────────────────────────┘
+
+Modo --full iniciado
+     │
+     ▼
+Dados sanitizados → Enviados para Gemini API
+     │
+     ├─ ✅ Sucesso → Gera HTML com análise da IA
+     │
+     └─ ❌ Falha (JSON truncado, rede, etc)
+          │
+          ├─ 🛠️ Tenta recuperar JSON automaticamente
+          │    (fecha chaves, arrays, remove "...")
+          │
+          ├─ ✅ Recuperou → Gera HTML com análise da IA
+          │
+          └─ ❌ Não recuperou
+               │
+               ├─ 💾 Salva resposta em arquivo de debug
+               │
+               └─ 🔄 FALLBACK: Gera HTML local
+                    (mesma qualidade do --local-html)
+```
+
+### Privacidade dos arquivos de debug
+
+**⚠️ IMPORTANTE**: Quando a IA falha, o sistema salva a resposta problemática em:
+
+```
+~/.bin/data/scripts-data/reports/security/html/
+└── gemini_response_error_YYYYMMDD_HHMMSS.txt
+```
+
+**Este arquivo pode conter**:
+- ❗ Dados enviados para a IA (já sanitizados conforme seu nível)
+- ❗ Resposta parcial da IA (se houve)
+- ❗ Informações do sistema (conforme sanitização escolhida)
+
+**Boas práticas**:
+1. ✅ **Revise antes de compartilhar**: Se for reportar um bug, revise o arquivo primeiro
+2. ✅ **Delete após análise**: Não precisa manter esses arquivos
+3. ✅ **Adicione ao .gitignore**: Se versionar configs, ignore `gemini_response_error_*.txt`
+4. ✅ **Use sanitização adequada**: Quanto mais strict, menos sensível o arquivo será
+
+**Exemplo de conteúdo** (com sanitização MODERATE):
+```
+{
+  "resumo_executivo": "Sistema apresenta 3 alertas críticos...",
+  "metricas_cards": [...],
+  "analise_portas": "Detectadas 12 portas abertas, incluindo...",
+  "vetores_ataque": [
+    {
+      "vetor": "SSH Brute Force",
+      "risco": "alto",
+      "descricao": "IP 203.0.XXX.XXX realizou 45 tentativas..."
+      // Note: IPs já sanitizados
+    }
+  ]
+  // JSON pode estar incompleto/truncado aqui...
+```
+
+### Vantagens do fallback
+
+✅ **Você nunca perde dados**: Sempre recebe um relatório  
+✅ **Funciona offline**: Se rede cair, continua  
+✅ **Debug facilitado**: Arquivo salvo ajuda a investigar problemas  
+✅ **Transparente**: Sistema informa o que aconteceu  
+
+### Desabilitando o fallback
+
+Se preferir falha completa ao invés de fallback (não recomendado):
+
+```python
+# Em security_reporter.py, comente esta seção:
+# if not analise:
+#     # FALLBACK: Se IA falhou, gerar relatório local
+#     ...
+```
+
+Mas honestamente... **por quê?** 🤷 O fallback só te ajuda!
+
+---
+
+## 📊 exemplos práticos
 
 ### Exemplo 1: Ataque de Força Bruta
 

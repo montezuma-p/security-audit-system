@@ -1,18 +1,11 @@
-# ==========================================
-# SECURITY MONITOR - .gitignore
-# ==========================================
-# CRÍTICO: Relatórios contêm dados sensíveis!
-# Nunca commitar arquivos de relatórios
-# ==========================================
 
-# Relatórios de segurança (contêm IPs, usuários, vulnerabilidades)
 reports/
 *.json
 *.html
 raw/
 html/
 
-# Configuração local (pode conter paths reais do usuário)
+
 config.json
 
 # Python
@@ -38,14 +31,14 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual environments (importante: não commitar dependências!)
+
 venv/
 env/
 ENV/
 .venv
 *.virtualenv
 
-# API Keys e credenciais
+
 .env
 .env.local
 *.key

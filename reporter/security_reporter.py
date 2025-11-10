@@ -26,7 +26,7 @@ from datetime import datetime
 
 # Importar módulos locais
 from modules.sanitizer import sanitize_report
-from modules.html_generator import save_basic_html
+from modules.html_generator import save_html
 
 # Imports condicionais para Google Gemini (só necessário para modo full)
 try:
@@ -64,7 +64,7 @@ api_key = os.getenv('GEMINI_API_KEY')
 
 # Inicializar cliente Gemini (só se módulo disponível E API key configurada)
 client = None
-model = "gemini-2.5-pro"
+model = "gemini-2.5-flash"
 
 if GEMINI_AVAILABLE and api_key:
     client = genai.Client(api_key=api_key)
@@ -307,6 +307,79 @@ Retorne APENAS o JSON válido, sem markdown, sem explicações extras.
     return prompt
 
 
+def tentar_recuperar_json(texto: str) -> dict:
+    """
+    Tenta recuperar/completar um JSON incompleto ou mal formatado
+    
+    Args:
+        texto: Texto potencialmente com JSON incompleto
+        
+    Returns:
+        Dict com JSON parseado ou None
+    """
+    import re
+    
+    # Remover possíveis marcadores de código
+    texto = texto.strip()
+    if texto.startswith('```json'):
+        texto = texto[7:]
+    if texto.startswith('```'):
+        texto = texto[3:]
+    if texto.endswith('```'):
+        texto = texto[:-3]
+    texto = texto.strip()
+    
+    # Tentar parsear diretamente primeiro
+    try:
+        return json.loads(texto)
+    except json.JSONDecodeError:
+        pass
+    
+    # Tentar encontrar o JSON no meio do texto
+    match = re.search(r'\{.*\}', texto, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+    
+    # Tentar completar JSON incompleto
+    # Contar chaves abertas vs fechadas
+    open_braces = texto.count('{')
+    close_braces = texto.count('}')
+    open_brackets = texto.count('[')
+    close_brackets = texto.count(']')
+    
+    # Remover aspas não fechadas no final
+    if texto.rstrip().endswith('...'):
+        texto = texto.rstrip()[:-3].rstrip()
+        if texto.endswith(','):
+            texto = texto[:-1]
+    
+    # Fechar strings não fechadas
+    if texto.count('"') % 2 != 0:
+        # Última aspas não fechada
+        last_quote = texto.rfind('"')
+        # Verificar se está no meio de um valor
+        if last_quote > 0 and texto[last_quote-1] != '\\':
+            # Adicionar fechamento de string
+            texto = texto[:last_quote] + texto[last_quote:].replace('\n', '').rstrip() + '"'
+    
+    # Fechar arrays
+    for _ in range(open_brackets - close_brackets):
+        texto += ']'
+    
+    # Fechar objetos
+    for _ in range(open_braces - close_braces):
+        texto += '}'
+    
+    # Tentar parsear novamente
+    try:
+        return json.loads(texto)
+    except json.JSONDecodeError:
+        return None
+
+
 def chamar_ia_gemini(prompt):
     """Chama a API do Gemini e retorna a resposta"""
     try:
@@ -324,210 +397,34 @@ def chamar_ia_gemini(prompt):
         # Extrair o texto da resposta
         resposta_texto = response.text
         
-        # Limpar possíveis markers de markdown
-        resposta_texto = resposta_texto.strip()
-        if resposta_texto.startswith('```json'):
-            resposta_texto = resposta_texto[7:]
-        if resposta_texto.startswith('```'):
-            resposta_texto = resposta_texto[3:]
-        if resposta_texto.endswith('```'):
-            resposta_texto = resposta_texto[:-3]
-        resposta_texto = resposta_texto.strip()
+        print("📥 Resposta recebida. Processando...")
         
-        # Parsear JSON
-        analise = json.loads(resposta_texto)
+        # Tentar recuperar JSON
+        analise = tentar_recuperar_json(resposta_texto)
         
-        print("✅ Análise recebida da IA")
-        return analise
+        if analise:
+            print("✅ Análise recebida da IA")
+            return analise
+        else:
+            print("❌ Não foi possível parsear JSON da resposta da IA")
+            print(f"📄 Primeiros 500 caracteres: {resposta_texto[:500]}...")
+            
+            # Salvar resposta completa para debug
+            debug_file = OUTPUT_DIR / f"gemini_response_error_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            try:
+                debug_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write(resposta_texto)
+                print(f"💾 Resposta completa salva em: {debug_file}")
+            except:
+                pass
+            
+            return None
         
-    except json.JSONDecodeError as e:
-        print(f"❌ Erro ao parsear JSON da resposta da IA: {e}")
-        print(f"Resposta recebida: {resposta_texto[:500]}...")
-        return None
     except Exception as e:
         print(f"❌ Erro ao chamar API Gemini: {e}")
-        return None
-
-
-def ler_template():
-    """Lê o template HTML"""
-    template_path = Path(__file__).parent / "templates" / "template.html"
-    
-    try:
-        with open(template_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except Exception as e:
-        print(f"❌ Erro ao ler template: {e}")
-        return None
-
-
-def gerar_html(dados_originais, analise_ia):
-    """Gera HTML a partir do template e da análise da IA"""
-    
-    template = ler_template()
-    if not template:
-        return None
-    
-    # Extrair dados básicos
-    hostname = dados_originais.get('hostname', 'Unknown')
-    timestamp = dados_originais.get('timestamp', 'Unknown')
-    security_score = dados_originais.get('security_score', {})
-    summary = dados_originais.get('summary', {})
-    
-    # Determinar status geral
-    security_status = summary.get('security_status', 'unknown')
-    status_class = {
-        'good': 'status-secure',
-        'warning': 'status-warning',
-        'critical': 'status-critical'
-    }.get(security_status, 'status-warning')
-    
-    status_text = {
-        'good': '✅ SISTEMA SEGURO',
-        'warning': '⚠️ ATENÇÃO NECESSÁRIA',
-        'critical': '🚨 CRÍTICO - AÇÃO IMEDIATA'
-    }.get(security_status, 'Status Desconhecido')
-    
-    # Substituições básicas
-    html = template.replace('{{HOSTNAME}}', hostname)
-    html = html.replace('{{TIMESTAMP}}', timestamp)
-    html = html.replace('{{STATUS_CLASS}}', status_class)
-    html = html.replace('{{STATUS_TEXT}}', status_text)
-    html = html.replace('{{SECURITY_SCORE}}', str(security_score.get('score', 0)))
-    html = html.replace('{{SECURITY_GRADE}}', security_score.get('grade', 'N/A'))
-    html = html.replace('{{TOTAL_ALERTS}}', str(summary.get('total_alerts', 0)))
-    html = html.replace('{{CRITICAL_ALERTS}}', str(summary.get('critical_alerts', 0)))
-    
-    # Substituir conteúdo da IA
-    html = html.replace('{{RESUMO_EXECUTIVO}}', analise_ia.get('resumo_executivo', ''))
-    html = html.replace('{{SECURITY_SCORE_ANALISE}}', analise_ia.get('security_score_analise', ''))
-    html = html.replace('{{ANALISE_PORTAS}}', analise_ia.get('analise_portas', ''))
-    html = html.replace('{{ANALISE_AUTENTICACAO}}', analise_ia.get('analise_autenticacao', ''))
-    html = html.replace('{{ANALISE_FIREWALL}}', analise_ia.get('analise_firewall', ''))
-    html = html.replace('{{ANALISE_VULNERABILIDADES}}', analise_ia.get('analise_vulnerabilidades', ''))
-    html = html.replace('{{ANALISE_REDE}}', analise_ia.get('analise_rede', ''))
-    html = html.replace('{{ANALISE_PERMISSOES}}', analise_ia.get('analise_permissoes', ''))
-    html = html.replace('{{PROXIMOS_PASSOS}}', analise_ia.get('proximos_passos', ''))
-    html = html.replace('{{CONCLUSAO}}', analise_ia.get('conclusao', ''))
-    
-    # Gerar cards de métricas
-    metricas_html = ''
-    for card in analise_ia.get('metricas_cards', []):
-        status_class = f"metric-{card.get('status', 'warning')}"
-        metricas_html += f'''
-        <div class="metric-card {status_class}">
-            <div class="metric-icon">{card.get('icon', '📊')}</div>
-            <div class="metric-content">
-                <div class="metric-label">{card.get('label', 'N/A')}</div>
-                <div class="metric-value">{card.get('value', 'N/A')}</div>
-                <div class="metric-subtext">{card.get('subtext', '')}</div>
-            </div>
-        </div>
-        '''
-    html = html.replace('{{METRICAS_CARDS}}', metricas_html)
-    
-    # Gerar alertas críticos
-    alertas_html = ''
-    for alerta in analise_ia.get('alertas_criticos', []):
-        alertas_html += f'''
-        <div class="alert-critical">
-            <div class="alert-header">
-                <strong>🚨 {alerta.get('titulo', 'Alerta')}</strong>
-                <span class="priority-badge priority-{alerta.get('prioridade', 3)}">
-                    Prioridade {alerta.get('prioridade', 3)}
-                </span>
-            </div>
-            <div class="alert-body">
-                <p><strong>Problema:</strong> {alerta.get('descricao', '')}</p>
-                <p><strong>Risco:</strong> {alerta.get('risco', '')}</p>
-                <div class="solution-box">
-                    <strong>✅ Solução Imediata:</strong>
-                    <pre>{alerta.get('solucao_imediata', '')}</pre>
-                </div>
-            </div>
-        </div>
-        '''
-    html = html.replace('{{ALERTAS_CRITICOS}}', alertas_html)
-    
-    # Gerar vetores de ataque
-    vetores_html = ''
-    for vetor in analise_ia.get('vetores_ataque', []):
-        risco_class = f"risk-{vetor.get('risco', 'medio')}"
-        vetores_html += f'''
-        <div class="attack-vector {risco_class}">
-            <h4>🎯 {vetor.get('vetor', 'Vetor Desconhecido')}</h4>
-            <p><strong>Descrição:</strong> {vetor.get('descricao', '')}</p>
-            <p><strong>Mitigação:</strong> {vetor.get('mitigacao', '')}</p>
-        </div>
-        '''
-    html = html.replace('{{VETORES_ATAQUE}}', vetores_html)
-    
-    # Gerar recomendações
-    recomendacoes_html = ''
-    for rec in analise_ia.get('recomendacoes_hardening', []):
-        priority_class = f"priority-{rec.get('prioridade', 'media')}"
-        comandos_html = ''
-        if rec.get('comandos'):
-            comandos_html = '<div class="command-box"><pre>' + '\n'.join(rec['comandos']) + '</pre></div>'
-        
-        recomendacoes_html += f'''
-        <div class="recommendation {priority_class}">
-            <div class="rec-header">
-                <span class="rec-category">[{rec.get('categoria', 'geral')}]</span>
-                <strong>{rec.get('titulo', 'Recomendação')}</strong>
-            </div>
-            <p>{rec.get('descricao', '')}</p>
-            {comandos_html}
-            <p class="rec-impact"><em>Impacto: {rec.get('impacto', '')}</em></p>
-        </div>
-        '''
-    html = html.replace('{{RECOMENDACOES}}', recomendacoes_html)
-    
-    # Gerar compliance checklist
-    compliance_html = ''
-    for item in analise_ia.get('compliance_checklist', []):
-        status_icon = {
-            'pass': '✅',
-            'fail': '❌',
-            'warning': '⚠️'
-        }.get(item.get('status', 'warning'), '❓')
-        
-        compliance_html += f'''
-        <div class="compliance-item compliance-{item.get('status', 'warning')}">
-            <span class="compliance-icon">{status_icon}</span>
-            <div class="compliance-content">
-                <strong>{item.get('item', 'Check')}</strong>
-                <p>{item.get('descricao', '')}</p>
-            </div>
-        </div>
-        '''
-    html = html.replace('{{COMPLIANCE_CHECKLIST}}', compliance_html)
-    
-    return html
-
-
-def salvar_html(html, dados_originais):
-    """Salva o HTML gerado"""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # Nome do arquivo baseado no timestamp do relatório original
-    timestamp = dados_originais.get('timestamp', datetime.now().isoformat())
-    # Extrair data/hora do timestamp ISO
-    try:
-        dt = datetime.fromisoformat(timestamp)
-        filename = f"security_report_{dt.strftime('%Y%m%d_%H%M%S')}.html"
-    except:
-        filename = f"security_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-    
-    filepath = OUTPUT_DIR / filename
-    
-    try:
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(html)
-        print(f"✅ Relatório HTML salvo em: {filepath}")
-        return filepath
-    except Exception as e:
-        print(f"❌ Erro ao salvar HTML: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -689,10 +586,10 @@ Modos de operação:
         
         if args.mode == 'basic':
             # Modo básico: HTML sem IA
-            print("🎨 Gerando relatório HTML básico (sem IA)...")
-            filepath = save_basic_html(dados_processados, OUTPUT_DIR)
+            print("🎨 Gerando relatório HTML local (sem IA)...")
+            filepath = save_html(dados_processados, str(OUTPUT_DIR), ai_analysis=None)
             if not filepath:
-                print("❌ Erro ao gerar HTML básico")
+                print("❌ Erro ao gerar HTML")
                 sys.exit(1)
         
         else:
@@ -713,19 +610,36 @@ Modos de operação:
             # Criar prompt e chamar IA
             prompt = criar_prompt_analise(dados_processados)
             analise = chamar_ia_gemini(prompt)
+            
+            # FALLBACK: Se IA falhou, gerar relatório local
             if not analise:
-                sys.exit(1)
-            
-            # Gerar HTML
-            print("🎨 Gerando relatório HTML...")
-            html = gerar_html(dados, analise)
-            if not html:
-                sys.exit(1)
-            
-            # Salvar
-            filepath = salvar_html(html, dados)
-            if not filepath:
-                sys.exit(1)
+                print("\n" + "="*70)
+                print("⚠️  FALLBACK AUTOMÁTICO: IA Indisponível")
+                print("="*70)
+                print()
+                print("❌ A análise com IA falhou (JSON inválido ou erro de API)")
+                print("🔄 Gerando automaticamente relatório local em vez disso...")
+                print()
+                print("✨ Você ainda terá um relatório completo, mas sem análise da IA")
+                print("="*70)
+                print()
+                
+                # Gerar HTML local (sem IA)
+                print("🎨 Gerando relatório HTML local (modo fallback)...")
+                filepath = save_html(dados_processados, str(OUTPUT_DIR), ai_analysis=None)
+                
+                if not filepath:
+                    print("❌ Erro ao gerar HTML (mesmo no fallback)")
+                    sys.exit(1)
+                
+                # Marcar que foi fallback
+                args.mode = 'basic'  # Ajustar para mensagens corretas depois
+            else:
+                # Gerar HTML com análise da IA
+                print("🎨 Gerando relatório HTML com IA...")
+                filepath = save_html(dados, str(OUTPUT_DIR), ai_analysis=analise)
+                if not filepath:
+                    sys.exit(1)
         
         # 5. Sucesso!
         print("\n" + "="*60)

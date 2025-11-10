@@ -51,11 +51,12 @@ _Porque ficar olhando logs crus é coisa de 2010._
 
 # 2️⃣ Relatório HTML Local (sem IA)  
 ./security_audit.sh --local-html
-# HTML básico sem análise de IA, privacidade total
+# HTML gerado localmente sem análise de IA, privacidade total
 
 # 3️⃣ Relatório Completo com IA
 ./security_audit.sh --full
 # Análise humanizada via Gemini, insights profundos
+# ⚡ FALLBACK AUTOMÁTICO: Se a IA falhar, gera relatório local automaticamente
 ```
 
 ### 🔐 **Sanitização Inteligente de Dados**
@@ -88,7 +89,14 @@ Relatórios visuais responsivos com:
 - 🌈 Gradientes modernos
 - 📊 Cards organizados por categoria
 - 🎯 Score visual destacado
-- 💬 Análise humanizada da IA
+- 💬 Análise humanizada da IA (modo full)
+- 🎪 **UI Avançada** (modo IA):
+  - 📁 Accordion expansível para recomendações
+  - 📊 Cards estatísticos para compliance
+  - ⏳ Timeline visual para próximos passos
+  - 🎯 Vetores de ataque formatados com severidade
+- 🔄 **Fallback Inteligente**: Se a IA falhar (erro de rede, JSON truncado), gera relatório local automaticamente
+- 💾 **Debug Automático**: Salva respostas problemáticas da IA em arquivos para análise
 
 ---
 
@@ -235,6 +243,13 @@ export SECURITY_REPORTER_OUTPUT="/seu/diretorio/html"
 │   │   │   ├── ports_analyzer.py
 │   │   │   ├── score_analyzer.py
 │   │   │   └── vulnerabilities_analyzer.py
+│   │   ├── html_builder
+│   │   │   ├── ai_sections.py
+│   │   │   ├── footer.py
+│   │   │   ├── formatters.py
+│   │   │   ├── header.py
+│   │   │   ├── __init__.py
+│   │   │   └── sections.py
 │   │   ├── html_generator.py
 │   │   ├── __init__.py
 │   │   └── sanitizer.py
@@ -246,7 +261,8 @@ export SECURITY_REPORTER_OUTPUT="/seu/diretorio/html"
 ├── requirements.txt
 └── security_audit.sh
 
-9 directories, 33 files
+10 directories, 39 files
+
 
 ```
 
@@ -341,10 +357,17 @@ O relatório HTML gerado inclui:
 
 - **Python 3.8+**: Core do sistema
 - **psutil**: Coleta de métricas do sistema
-- **Google Gemini API**: Análise humanizada via IA
+- **Google Gemini API**: Análise humanizada via IA (opcional)
 - **systemd/journalctl**: Análise de logs
 - **firewalld**: Verificação de firewall
 - **SELinux**: Análise de políticas de segurança
+
+**🆕 Novidades Recentes**:
+- ✨ **Arquitetura Modular**: HTML Generator refatorado (751→285 linhas) com pacote `html_builder/`
+- 🎪 **UI Avançada para IA**: Accordion, cards, timeline e formatação aprimorada
+- 🔄 **Fallback Inteligente**: Se API Gemini falhar, gera relatório local automaticamente
+- 🛠️ **Recuperação de JSON**: Tenta recuperar JSONs truncados/malformados da IA
+- 💾 **Debug Automático**: Salva respostas problemáticas em `gemini_response_error_*.txt`
 
 ---
 

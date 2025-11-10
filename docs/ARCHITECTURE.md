@@ -187,6 +187,8 @@ security_YYYYMMDD_HHMMSS.json
 
 **Responsabilidade**: Transformar dados brutos em insights humanizados
 
+**🆕 ATUALIZAÇÃO (Nov 2025)**: A arquitetura do Reporter foi completamente refatorada para ser modular e unificada.
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │           reporter/security_reporter.py (Core)                │
@@ -207,18 +209,26 @@ security_YYYYMMDD_HHMMSS.json
 │                     ▼                                         │
 │  STAGE 2: Análise (Modo Full com IA)                         │
 │  ┌────────────────────────────────────┐                      │
-│  │     Google Gemini API Client       │                      │
+│  │   Google Gemini 2.0 Flash Client   │                      │
 │  │                                     │                      │
 │  │  Envia: JSON sanitizado + prompt   │                      │
 │  │  Recebe: JSON estruturado com:     │                      │
 │  │    • resumo_executivo              │                      │
 │  │    • metricas_cards                │                      │
 │  │    • alertas_criticos              │                      │
-│  │    • analise_portas                │                      │
-│  │    • analise_autenticacao          │                      │
-│  │    • recomendacoes_hardening       │                      │
 │  │    • vetores_ataque                │                      │
+│  │    • recomendacoes_hardening       │                      │
+│  │    • compliance_checklist          │                      │
+│  │    • proximos_passos               │                      │
 │  │    • etc.                           │                      │
+│  │                                     │                      │
+│  │  🔄 FALLBACK: Se API falhar →      │                      │
+│  │     Gera relatório local           │                      │
+│  │     automaticamente                │                      │
+│  │                                     │                      │
+│  │  🛠️ RECUPERAÇÃO: JSON truncado →   │                      │
+│  │     tentar_recuperar_json()        │                      │
+│  │     (fecha chaves, arrays, etc)    │                      │
 │  └────────────────────────────────────┘                      │
 │                     │                                         │
 │          OU (Modo --local-html)                              │
@@ -243,20 +253,56 @@ security_YYYYMMDD_HHMMSS.json
 │  └────────────────────────────────────┘                      │
 │                     │                                         │
 │                     ▼                                         │
-│  STAGE 3: Geração HTML                                        │
+│  STAGE 3: Geração HTML (Arquitetura Modular 🆕)              │
 │  ┌────────────────────────────────────┐                      │
-│  │    gerar_html()                    │                      │
+│  │  html_generator.py (Orquestrador)  │                      │
+│  │  ┌──────────────────────────┐     │                      │
+│  │  │ generate_html(data,       │     │                      │
+│  │  │   ai_analysis=None)       │     │                      │
+│  │  │                           │     │                      │
+│  │  │ Se ai_analysis:           │     │                      │
+│  │  │   → convert_ai_to_insights│     │                      │
+│  │  │ Senão:                    │     │                      │
+│  │  │   → run_analyzers()       │     │                      │
+│  │  └──────────────────────────┘     │                      │
+│  │            │                        │                      │
+│  │            ▼                        │                      │
+│  │  ┌──────────────────────────┐     │                      │
+│  │  │   html_builder/ package   │     │                      │
+│  │  │                           │     │                      │
+│  │  │  📁 formatters.py         │     │                      │
+│  │  │    • format_markdown      │     │                      │
+│  │  │    • load_asset (CSS/JS)  │     │                      │
+│  │  │                           │     │                      │
+│  │  │  📁 header.py             │     │                      │
+│  │  │    • generate_header()    │     │                      │
+│  │  │      (modo IA ou local)   │     │                      │
+│  │  │                           │     │                      │
+│  │  │  📁 sections.py           │     │                      │
+│  │  │    • generate_score       │     │                      │
+│  │  │    • generate_analysis    │     │                      │
+│  │  │    • generate_disclaimer  │     │                      │
+│  │  │      (condicional)        │     │                      │
+│  │  │                           │     │                      │
+│  │  │  📁 ai_sections.py        │     │                      │
+│  │  │    • accordion (recs) 🎪  │     │                      │
+│  │  │    • cards (compliance) 📊│     │                      │
+│  │  │    • timeline (steps) ⏳  │     │                      │
+│  │  │    • attack_vectors 🎯    │     │                      │
+│  │  │                           │     │                      │
+│  │  │  📁 footer.py             │     │                      │
+│  │  │    • generate_footer()    │     │                      │
+│  │  │    • generate_json_modal()│     │                      │
+│  │  └──────────────────────────┘     │                      │
 │  │                                     │                      │
-│  │  • Carrega template.html           │                      │
-│  │  • Substitui placeholders          │                      │
-│  │  • Injeta JSON da IA (modo full)   │                      │
-│  │    OU analyzers (modo local-html)  │                      │
-│  │  • Gera HTML dinâmico              │                      │
-│  │    (cards, alertas, tabelas)       │                      │
+│  │  Resultado: HTML completo          │                      │
+│  │  • Inline CSS e JS                 │                      │
+│  │  • Standalone (sem deps)           │                      │
+│  │  • Responsivo                      │                      │
 │  └────────────────────────────────────┘                      │
 │                                                               │
 │                    OUTPUT                                     │
-│         security_report_TIMESTAMP.html                        │
+│   security_report_{ai|local}_TIMESTAMP.html                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -575,6 +621,79 @@ Cada analyzer concreto:
 - 🐳 **Containers**: ENV vars ideais para Docker
 - 🔧 **CI/CD**: Fácil customizar via ENV em pipelines
 - 💾 **Persistência**: JSON persiste entre execuções
+
+### 7. 🆕 Arquitetura Modular do HTML Generator (Nov 2025)
+
+**Decisão**: Refatorar de template.html para geração programática modular
+
+**Razões**:
+- 📦 **Modularidade**: 751 linhas → 285 linhas (62% redução) + 6 módulos especializados
+- 🔄 **Unificação**: Um único gerador para IA e local (antes eram separados)
+- 🧪 **Testabilidade**: Cada módulo pode ser testado isoladamente
+- 🎨 **Flexibilidade**: Fácil adicionar novos componentes (accordion, cards, timeline)
+- 🔧 **Manutenção**: Mudanças em seções específicas não afetam outras
+- 📊 **Reusabilidade**: Componentes podem ser reutilizados (e.g., formatters)
+
+**Estrutura**:
+```
+html_builder/
+├── __init__.py          # Exports centralizados
+├── formatters.py        # Markdown, asset loading
+├── header.py            # Cabeçalhos (detecta modo)
+├── footer.py            # Rodapé e modais
+├── sections.py          # Seções técnicas (score, analysis)
+└── ai_sections.py       # Seções específicas IA (accordion, cards, timeline)
+```
+
+**Alternativa anterior**: template.html com placeholders
+- ❌ Difícil manter HTML grande
+- ❌ Lógica condicional complexa no template
+- ❌ Duplicação entre modo IA e local
+
+### 8. 🆕 Fallback Automático (Nov 2025)
+
+**Decisão**: Se API Gemini falhar, gerar automaticamente relatório local
+
+**Razões**:
+- 🛡️ **Confiabilidade**: Usuário SEMPRE recebe relatório
+- 📡 **Resiliência**: Funciona mesmo com problemas de rede
+- 🔧 **UX**: Não perde dados coletados por falha da IA
+- 💾 **Debug**: Salva respostas problemáticas para análise
+
+**Implementação**:
+```python
+analise = chamar_ia_gemini(prompt)
+if not analise:
+    # FALLBACK: gerar HTML local automaticamente
+    filepath = save_html(data, output_dir, ai_analysis=None)
+    # Usuário ainda tem relatório completo
+```
+
+**Alternativa anterior**: Falha completa se IA não responder
+- ❌ Usuário perde tudo
+- ❌ Precisa re-executar monitor
+- ❌ Frustrante em ambientes com internet instável
+
+### 9. 🆕 Recuperação Inteligente de JSON (Nov 2025)
+
+**Decisão**: Tentar recuperar JSONs truncados/malformados da IA
+
+**Razões**:
+- 🤖 **IA não é perfeita**: Gemini pode truncar respostas (token limit)
+- 🔧 **Recuperação**: Melhor tentar recuperar que falhar imediatamente
+- 📊 **Dados parciais**: Mesmo JSON incompleto pode ter dados úteis
+- 🐛 **Debug**: Salva resposta original para análise
+
+**Estratégias de recuperação**:
+1. Remover marcadores de código (```json, ```)
+2. Buscar JSON no meio do texto com regex
+3. Completar chaves/arrays não fechados (`}`, `]`)
+4. Remover `...` de truncamento
+5. Fechar strings não finalizadas
+
+**Alternativa anterior**: json.loads() direto
+- ❌ Falha em qualquer erro
+- ❌ Perde dados mesmo que 90% do JSON esteja OK
 
 ---
 
