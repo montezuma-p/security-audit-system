@@ -303,48 +303,75 @@ def generate_compliance_section(items: List[Dict]) -> str:
     """
 
 
-def generate_next_steps_timeline(content: str) -> str:
+def generate_next_steps_timeline(content) -> str:
     """
     Gera seção de Próximos Passos como linha do tempo
     
     Args:
-        content: Conteúdo em texto (será parseado para extrair passos)
+        content: Pode ser string (texto) ou lista (array de objetos)
         
     Returns:
         HTML da linha do tempo
     """
     from .formatters import format_markdown_to_html
-    
-    # Tentar extrair passos numerados do texto
     import re
     
-    # Procurar por padrões como "1.", "Passo 1:", etc.
     steps = []
-    lines = content.split('\n')
-    current_step = None
     
-    for line in lines:
-        # Detectar início de novo passo
-        match = re.match(r'^(?:Passo\s+)?(\d+)[\.:)\s]+(.+)', line.strip(), re.IGNORECASE)
-        if match:
-            if current_step:
-                steps.append(current_step)
-            current_step = {
-                'number': match.group(1),
-                'title': match.group(2).strip(),
-                'description': ''
-            }
-        elif current_step and line.strip():
-            current_step['description'] += line.strip() + ' '
+    # Caso 1: Content é uma lista de dicts (formato novo da IA)
+    if isinstance(content, list):
+        for idx, item in enumerate(content, 1):
+            if isinstance(item, dict):
+                steps.append({
+                    'number': str(idx),
+                    'title': item.get('titulo', f'Passo {idx}'),
+                    'description': item.get('descricao', ''),
+                    'prazo': item.get('prazo', '')
+                })
+            else:
+                # Fallback se item não for dict
+                steps.append({
+                    'number': str(idx),
+                    'title': f'Etapa {idx}',
+                    'description': str(item)
+                })
     
-    if current_step:
-        steps.append(current_step)
+    # Caso 2: Content é string (formato antigo - tentar parsear)
+    elif isinstance(content, str):
+        # Tentar extrair passos numerados do texto
+        lines = content.split('\n')
+        current_step = None
+        
+        for line in lines:
+            # Detectar início de novo passo
+            match = re.match(r'^(?:Passo\s+)?(\d+)[\.:)\s]+(.+)', line.strip(), re.IGNORECASE)
+            if match:
+                if current_step:
+                    steps.append(current_step)
+                current_step = {
+                    'number': match.group(1),
+                    'title': match.group(2).strip(),
+                    'description': ''
+                }
+            elif current_step and line.strip():
+                current_step['description'] += line.strip() + ' '
+        
+        if current_step:
+            steps.append(current_step)
+        
+        # Se não encontrou passos estruturados, criar passos genéricos
+        if not steps:
+            # Dividir por parágrafos
+            paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+            steps = [{'number': str(i+1), 'title': f'Etapa {i+1}', 'description': p} for i, p in enumerate(paragraphs[:5])]
     
-    # Se não encontrou passos estruturados, criar passos genéricos
+    # Se ainda não temos steps, criar um genérico
     if not steps:
-        # Dividir por parágrafos
-        paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
-        steps = [{'number': str(i+1), 'title': f'Etapa {i+1}', 'description': p} for i, p in enumerate(paragraphs[:5])]
+        steps = [{
+            'number': '1',
+            'title': 'Revisar Recomendações',
+            'description': 'Analise as recomendações de segurança apresentadas neste relatório e priorize as ações necessárias.'
+        }]
     
     # Gerar HTML da timeline
     timeline_html = ''
@@ -357,6 +384,11 @@ def generate_next_steps_timeline(content: str) -> str:
         colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a']
         color = colors[(idx - 1) % len(colors)]
         
+        # Badge de prazo (se houver)
+        prazo_badge = ''
+        if step.get('prazo'):
+            prazo_badge = f'<span style="background: rgba(255,255,255,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.75em; margin-left: 10px;">⏱️ {step["prazo"]}</span>'
+        
         timeline_html += f'''
         <div class="timeline-item" style="display: flex; gap: 20px; margin-bottom: 40px; position: relative;">
             <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center;">
@@ -367,9 +399,10 @@ def generate_next_steps_timeline(content: str) -> str:
             </div>
             
             <div style="flex: 1; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-left: 4px solid {color}; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateX(8px)'; this.style.boxShadow='0 4px 16px rgba(0,0,0,0.15)'" onmouseout="this.style.transform='translateX(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.1)'">
-                <h4 style="margin: 0 0 12px 0; color: #2d3748; font-size: 1.2em; display: flex; align-items: center; gap: 10px;">
+                <h4 style="margin: 0 0 12px 0; color: #2d3748; font-size: 1.2em; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span style="background: {color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.7em;">PASSO {idx}</span>
                     {step.get('title', f'Etapa {idx}')}
+                    {prazo_badge}
                 </h4>
                 <p style="margin: 0; color: #4a5568; line-height: 1.7;">{step.get('description', '').strip()}</p>
             </div>
@@ -381,7 +414,7 @@ def generate_next_steps_timeline(content: str) -> str:
             <h2 class="section-title">📋 Próximos Passos</h2>
             <p style="margin-bottom: 30px; color: #666; font-style: italic;">🎯 Siga esta linha do tempo para implementar as melhorias de segurança</p>
             <div class="timeline-container" style="padding: 20px 0;">
-                {timeline_html if timeline_html else format_markdown_to_html(content)}
+                {timeline_html}
             </div>
         </div>
     """

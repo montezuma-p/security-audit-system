@@ -269,7 +269,23 @@ ESTRUTURA DO JSON A RETORNAR:
         }}
     ],
     
-    "proximos_passos": "Lista priorizada do que fazer nas próximas 24h, próxima semana e próximo mês para melhorar segurança.",
+    "proximos_passos": [
+        {{
+            "titulo": "Primeiras 24 horas",
+            "descricao": "Ações urgentes que devem ser tomadas imediatamente",
+            "prazo": "24h"
+        }},
+        {{
+            "titulo": "Próxima semana",
+            "descricao": "Melhorias importantes a implementar",
+            "prazo": "7d"
+        }},
+        {{
+            "titulo": "Próximo mês",
+            "descricao": "Hardening adicional e otimizações",
+            "prazo": "30d"
+        }}
+    ],
     
     "conclusao": "1-2 parágrafos: o sistema é seguro o suficiente? Principais vulnerabilidades? Ação mais urgente?"
 }}
